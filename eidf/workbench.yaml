@@ -1,0 +1,31 @@
+# Small CPU pod that keeps the volume mounted at /data, for copying code in and looking at results.
+#   kubectl -n eidfXXXns create -f eidf/workbench.yaml
+#   kubectl -n eidfXXXns get pods                       # wait for workbench-xxxxx-yyyyy  Running
+#   kubectl -n eidfXXXns exec -it <pod> -- bash
+# Delete it when done: kubectl -n eidfXXXns delete job <job name>
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: workbench-
+  labels:
+    kueue.x-k8s.io/queue-name: eidfXXXns-user-queue
+spec:
+  completions: 1
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: workbench
+          image: python:3.12
+          command: ["sleep", "infinity"]
+          resources:
+            requests: {cpu: 1, memory: 2Gi}
+            limits: {cpu: 2, memory: 8Gi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: emg1-data

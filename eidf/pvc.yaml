@@ -1,0 +1,13 @@
+# Shared volume for EMG-1: ~330 GB download + ~60 GB converted + checkpoints.
+#   kubectl -n eidfXXXns create -f eidf/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: emg1-data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 600Gi
+  storageClassName: csi-cephfs-sc

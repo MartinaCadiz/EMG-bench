@@ -1,0 +1,46 @@
+# CPU job: download EMG-1 onto the volume, then convert it for Pretrain/.
+# Expects the code at /data/code (copied in through the workbench pod). Resumable: if the pod dies,
+# the job retries and both the download and the conversion continue where they stopped.
+#   kubectl -n eidfXXXns create -f eidf/prepare_data.yaml
+#   kubectl -n eidfXXXns logs -f job/<job name>
+# MODE=starter first (~3 GB, minutes), then MODE=all (~330 GB, hours).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: emg1-prepare-
+  labels:
+    kueue.x-k8s.io/queue-name: eidfXXXns-user-queue
+spec:
+  completions: 1
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: prepare
+          image: python:3.12
+          env:
+            - {name: MODE, value: "starter"}   # starter | all
+            - {name: WORKERS, value: "16"}
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --quiet numpy scipy h5py pandas pyarrow
+              cd /data/code
+              bash Setup/Get_Datasets/get_EMG1.sh "$MODE" /data/emg1
+              LIMIT=""
+              if [ "$MODE" = starter ]; then LIMIT="--limit 20"; fi
+              python -m Pretrain.convert_emg1 8ch --src /data/emg1/emg1-8ch-v1.0.1 --out /data/converted/emg1_8ch --workers "$WORKERS" $LIMIT
+              python -m Pretrain.convert_emg1 3ch --src /data/emg1/emg1-3ch-v1.0.1 --out /data/converted/emg1_3ch --workers "$WORKERS" $LIMIT
+              du -sh /data/emg1 /data/converted
+          resources:
+            requests: {cpu: 16, memory: 32Gi}
+            limits: {cpu: 16, memory: 64Gi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: emg1-data

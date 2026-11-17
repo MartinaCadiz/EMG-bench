@@ -1,0 +1,44 @@
+# GPU job: JEPA pretraining on the converted 3-channel training split. Checkpoints go to /data/runs and
+# the job resumes from last.pt if it is restarted.
+#   kubectl -n eidfXXXns create -f eidf/pretrain.yaml
+#   kubectl -n eidfXXXns logs -f job/<job name>
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: emg1-jepa-
+  labels:
+    kueue.x-k8s.io/queue-name: eidfXXXns-user-queue
+spec:
+  completions: 1
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+      containers:
+        - name: train
+          image: pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+          workingDir: /data/code
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              pip install --quiet pyyaml
+              nvidia-smi
+              python -m Pretrain.train --config Pretrain/configs/emg1_jepa.yaml --resume \
+                --set data.manifest=/data/converted/emg1_3ch/manifest_train.json \
+                      optim.num_workers=8 out=/data/runs/emg1_jepa
+          resources:
+            requests: {cpu: 10, memory: 48Gi}
+            limits: {cpu: 10, memory: 96Gi, nvidia.com/gpu: 1}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: shm, mountPath: /dev/shm}   # DataLoader workers need more than the 64 MB default
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: emg1-data
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 16Gi}
